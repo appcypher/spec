@@ -61,6 +61,12 @@ type PrivateNode
   = PrivateDirectory
   | PrivateFile
 
+type PrivateNodeSchema<M> = {
+  hamt: HAMT<Namefilter, [ByteArray, Array<CID<ByteArray>>]>
+  header: PrivateNodeHeader
+  main: M
+}
+
 // encrypted using deriveKey(ratchet)
 type PrivateNodeHeader = {
   ratchet: SkipRatchet
@@ -68,7 +74,7 @@ type PrivateNodeHeader = {
   inumber: Inumber // TODO(matheus23): Inside or outside the revision section?
 }
 
-type PrivateDirectory = {
+type PrivateDirectoryMain = {
   metadata: Metadata<"wnfs-private-dir">
   entries: Record<string, {
     contentKey: Key // hash(deriveKey(entryRatchet))
@@ -79,13 +85,17 @@ type PrivateDirectory = {
   }>
 }
 
-type PrivateFile = {
+type PrivateFile = PrivateNodeSchema<PrivateDirectoryMain>
+
+type PrivateFileMain = {
   metadata: Metadata<true>
   content: ByteArray | {
     ratchet: SkipRatchet
     count: Uint64
   }
 }
+
+type PrivateFile = PrivateNodeSchema<PrivateFileMain>
 ```
 
 
@@ -106,18 +116,19 @@ External content namefilters are defined thus:
 
 ```typescript
 const segmentNames = (file) => {
-  const { bareNamefilter, content: { ratchet, count } } = file.header
+  const { bareName } = file.header
+  const { content: { ratchet, count } } = file.main
   const key = ratchet.toBytes()
-  
+
   let names = []
-  for (i = 0; i < count; i++) {  
-    names[i] = bareNamefilter
-                 .addBare(sha3(key))
-                 .addBare(sha3(`${key}${i}`))
-                 .saturate()
+  for (i = 0; i < count; i++) {
+    addBare(bareName, sha3(key))
+    addBare(bareName, sha3(`${key}${i}`))
+    saturate(bareName)
+    names.push(bareName)
   }
 
-  return contentNames
+  return names
 }
 ```
 
